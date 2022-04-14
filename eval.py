@@ -1,7 +1,7 @@
 from common.eval import *
 
 model.eval()
-
+# test_acc
 if P.mode == 'test_acc':
     from evals import test_classifier
     with torch.no_grad():
