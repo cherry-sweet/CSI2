@@ -101,6 +101,34 @@ elif P.mode in ['ood', 'ood_pre']:
 
     logger.info('Finished training.')
     print("可以进行到这")
+    scores_in=None
+    for data in test_loader:
+        inputs, _ = data
+        inputs = inputs.to(device)
+        _, outputs_aux = model(inputs, simclr=True)
+        outputs = outputs_aux['simclr']
+        score = torch.sum((outputs - c) ** 2, dim=1)
+        if scores_in==None:
+            scores_in=score
+        else:
+            scores_in=torch.cat((scores_in,score),dim=0)
+    print(scores_in.size())
+    # scores_ood=None
+    # for data in test_loader_ood:
+    #     inputs, _ = data
+    #     inputs = inputs.to(device)
+    #     _, outputs_aux = model(inputs, simclr=True)
+    #     outputs = outputs_aux['simclr']
+    #     score = torch.sum((outputs - c) ** 2, dim=1)
+    #     if scores_ood == None:
+    #         scores_ood = score
+    #     else:
+    #         scores_ood = torch.cat((scores_ood, score), dim=0)
+    # print(scores_ood.size())
+
+
+
+
 else:
     raise NotImplementedError()
 

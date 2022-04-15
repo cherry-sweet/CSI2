@@ -33,15 +33,24 @@ P.n_classes = n_classes
 if P.one_class_idx is not None:
     cls_list = get_superclass_list(P.dataset)
     P.n_superclasses = len(cls_list)
-
+    print()
     full_test_set = deepcopy(test_set)  # test set of full classes
     train_set = get_subclass_dataset(train_set, classes=cls_list[P.one_class_idx])
     test_set = get_subclass_dataset(test_set, classes=cls_list[P.one_class_idx])
+    test_od=None
+    for i in range(P.n_superclasses):
+        if i!=P.one_class_idx:
+            if test_od==None:
+                test_od = get_subclass_dataset(full_test_set, classes=cls_list[i])
+            else:
+                test_od+=get_subclass_dataset(full_test_set, classes=cls_list[i])
+
 
 kwargs = {'pin_memory': False, 'num_workers': 4}
 
 train_loader = DataLoader(train_set, shuffle=True, batch_size=P.batch_size, **kwargs)
-test_loader = DataLoader(test_set, shuffle=False, batch_size=P.test_batch_size, **kwargs)
+test_loader = DataLoader(test_set, shuffle=False, batch_size=100, **kwargs)
+test_loader_ood=DataLoader(test_od, shuffle=False, batch_size=50, **kwargs)
 
 if P.ood_dataset is None:
     if P.one_class_idx is not None:
