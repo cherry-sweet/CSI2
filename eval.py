@@ -1,3 +1,6 @@
+import logging
+import time
+
 from common.eval import *
 from common.eval_setting import *
 import torch.optim as optim
@@ -49,6 +52,8 @@ elif P.mode in ['ood', 'ood_pre']:
     print('\t'.join(bests))
     print("我可以我能行")
     #计算圆心：
+    logger = logging.getLogger()
+    logging.basicConfig(level=logging.INFO)
     c=init_center_c(net=model,train_loader=train_loader)
     # Set optimizer (Adam optimizer for now)
     optimizer = optim.Adam(model.parameters(), lr=P.svdd_lr, weight_decay=P.dweight_decay,
@@ -56,6 +61,45 @@ elif P.mode in ['ood', 'ood_pre']:
 
     # Set learning rate scheduler
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=P.dlr_milestones, gamma=0.1)
+    #set train
+    print("开始正式训练")
+    start_time = time.time()
+    model.train()
+    for epoch in range(P.svdd_epochs):
+
+        scheduler.step()
+
+        loss_epoch = 0.0
+        n_batches = 0
+        epoch_start_time = time.time()
+        for data in train_loader:
+            inputs, _ = data
+            inputs = inputs.to(device)
+
+            # Zero the network parameter gradients
+            optimizer.zero_grad()
+
+            # Update network parameters via backpropagation: forward + backward + optimize
+            _, outputs_aux = model(inputs,simclr=True)
+            outputs = outputs_aux['simclr']
+            dist = torch.sum((outputs - c) ** 2, dim=1)
+            loss = torch.mean(dist)
+            loss.backward()
+            optimizer.step()
+
+            loss_epoch += loss.item()
+            n_batches += 1
+
+        # log epoch statistics
+        epoch_train_time = time.time() - epoch_start_time
+        # print(loss_epoch / n_batches)
+        logger.info('  Epoch {}/{}\t Time: {:.3f}\t Loss: {:.8f}'
+                    .format(epoch + 1, P.svdd_epochs, epoch_train_time, loss_epoch / n_batches))
+
+    train_time = time.time() - start_time
+    logger.info('Training time: %.3f' % train_time)
+
+    logger.info('Finished training.')
     print("可以进行到这")
 else:
     raise NotImplementedError()
