@@ -1,7 +1,8 @@
 from common.eval import *
-
+from common.eval_setting import *
+import torch.optim as optim
 model.eval()
-# test_acc
+
 if P.mode == 'test_acc':
     from evals import test_classifier
     with torch.no_grad():
@@ -46,7 +47,16 @@ elif P.mode in ['ood', 'ood_pre']:
 
     bests = map('{:.4f}'.format, bests)
     print('\t'.join(bests))
+    print("我可以我能行")
+    #计算圆心：
+    c=init_center_c(net=model,train_loader=train_loader)
+    # Set optimizer (Adam optimizer for now)
+    optimizer = optim.Adam(model.parameters(), lr=P.svdd_lr, weight_decay=P.dweight_decay,
+                       amsgrad=True)
 
+    # Set learning rate scheduler
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=P.dlr_milestones, gamma=0.1)
+    print("可以进行到这")
 else:
     raise NotImplementedError()
 

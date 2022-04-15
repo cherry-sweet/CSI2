@@ -82,6 +82,15 @@ def parse_args(default=False):
                         action='store_true')
     parser.add_argument("--save_score", help='save ood score for plotting histogram',
                         action='store_true')
+    # DSVDD阶段的训练参数
+    parser.add_argument('--svdd_lr', help='Initial learning rate',
+                        default=0.001, type=float)
+    parser.add_argument('--dweight_decay', help='Initial learning rate',
+                        default=1e-6, type=float)
+    parser.add_argument('--dlr_milestones', help='Initial learning rate',
+                        type=int, default=[50])
+    parser.add_argument('--svdd_epochs', help='Epochs',
+                        default=100, type=int)
 
     if default:
         return parser.parse_args('')  # empty string
