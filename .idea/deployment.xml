@@ -16,6 +16,13 @@
           </mappings>
         </serverdata>
       </paths>
+      <paths name="xinghongjie@10.188.220.21:22 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
     </serverData>
     <option name="myAutoUpload" value="ALWAYS" />
   </component>

@@ -1,10 +1,18 @@
 import logging
 import time
 
+import models.transform_layers as TL
+from training.contrastive_loss import get_similarity_matrix, NT_xent
+from utils.utils import AverageMeter, normalize
+
+
+import numpy
 from common.eval import *
 from common.eval_setting import *
 import torch.optim as optim
 from evals.evals import get_auroc
+device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
+hflip = TL.HorizontalFlipLayer().to(device)
 model.eval()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 if P.mode == 'test_acc':
@@ -62,6 +70,7 @@ elif P.mode in ['ood', 'ood_pre']:
 
     # Set learning rate scheduler
     scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=P.dlr_milestones, gamma=0.1)
+    score_sum=[]
     #set train
     print("开始正式训练")
     start_time = time.time()
@@ -76,15 +85,25 @@ elif P.mode in ['ood', 'ood_pre']:
         for data in train_loader:
             inputs, _ = data
             inputs = inputs.to(device)
-
+            # images1, images2 = hflip(inputs.repeat(2, 1, 1, 1)).chunk(2)
+            # images_pair = torch.cat([images1, images2], dim=0)
+            # images_pair = simclr_aug(images_pair)
             # Zero the network parameter gradients
             optimizer.zero_grad()
 
             # Update network parameters via backpropagation: forward + backward + optimize
             _, outputs_aux = model(inputs,simclr=True)
+            # _, outputs_aux2 = model(images_pair, simclr=True)
             outputs = outputs_aux['simclr']
             dist = torch.sum((outputs - c) ** 2, dim=1)
-            loss = torch.mean(dist)
+            # simclr = normalize(outputs_aux2['simclr'])
+            # sim_matrix = get_similarity_matrix(simclr, multi_gpu=P.multi_gpu)
+            # loss_sim = NT_xent(sim_matrix, temperature=0.5)
+            #更改损失函数  加上对比损失
+
+            loss1 = torch.mean(dist)
+
+            loss=loss1
             loss.backward()
             optimizer.step()
 
@@ -92,6 +111,42 @@ elif P.mode in ['ood', 'ood_pre']:
             n_batches += 1
 
         # log epoch statistics
+        if ((epoch==1) or (epoch==500)or(epoch==800)or(epoch==999)):
+            num=[]
+            with torch.no_grad():
+                scores_in = None
+                for data in test_loader:
+                    inputs, _ = data
+                    inputs = inputs.to(device)
+                    _, outputs_aux = model(inputs, simclr=True)
+                    outputs = outputs_aux['simclr']
+
+                    score = torch.sum((outputs - c) ** 2, dim=1)
+                    if scores_in == None:
+                        scores_in = score
+                    else:
+                        scores_in = torch.cat((scores_in, score), dim=0)
+                    n = outputs.cpu().numpy()
+                    num.append(n)
+                scores_ood = None
+                for data in test_loader_ood:
+                    inputs, _ = data
+                    inputs = inputs.to(device)
+                    _, outputs_aux = model(inputs, simclr=True)
+                    outputs = outputs_aux['simclr']
+
+                    score = torch.sum((outputs - c) ** 2, dim=1)
+                    if scores_ood == None:
+                        scores_ood = score
+                    else:
+                        scores_ood = torch.cat((scores_ood, score), dim=0)
+                    n = outputs.cpu().numpy()
+                    num.append(n)
+                auroc_dict = get_auroc(scores_ood.cpu(), scores_in.cpu())
+                score_sum.append(auroc_dict)
+                print(auroc_dict)
+                print(len(num))
+
         epoch_train_time = time.time() - epoch_start_time
         # print(loss_epoch / n_batches)
         logger.info('  Epoch {}/{}\t Time: {:.3f}\t Loss: {:.8f}'
@@ -102,33 +157,36 @@ elif P.mode in ['ood', 'ood_pre']:
 
     logger.info('Finished training.')
     print("可以进行到这")
-    with torch.no_grad():
-        scores_in=None
-        for data in test_loader:
-            inputs, _ = data
-            inputs = inputs.to(device)
-            _, outputs_aux = model(inputs, simclr=True)
-            outputs = outputs_aux['simclr']
-            score = torch.sum((outputs - c) ** 2, dim=1)
-            if scores_in==None:
-                scores_in=score
-            else:
-                scores_in=torch.cat((scores_in,score),dim=0)
-        print(scores_in.size())
-        scores_ood=None
-        for data in test_loader_ood:
-            inputs, _ = data
-            inputs = inputs.to(device)
-            _, outputs_aux = model(inputs, simclr=True)
-            outputs = outputs_aux['simclr']
-            score = torch.sum((outputs - c) ** 2, dim=1)
-            if scores_ood == None:
-                scores_ood = score
-            else:
-                scores_ood = torch.cat((scores_ood, score), dim=0)
-        print(scores_ood.size())
-    auroc_dict=get_auroc(scores_ood.cpu(),scores_in.cpu())
-    print(auroc_dict)
+
+
+    # with torch.no_grad():
+    #     scores_in=None
+    #     for data in test_loader:
+    #         inputs, _ = data
+    #         inputs = inputs.to(device)
+    #         _, outputs_aux = model(inputs, simclr=True)
+    #         outputs = outputs_aux['simclr']
+    #         score = torch.sum((outputs - c) ** 2, dim=1)
+    #         if scores_in==None:
+    #             scores_in=score
+    #         else:
+    #             scores_in=torch.cat((scores_in,score),dim=0)
+    #     print(scores_in.size())
+    #     scores_ood=None
+    #     for data in test_loader_ood:
+    #         inputs, _ = data
+    #         inputs = inputs.to(device)
+    #         _, outputs_aux = model(inputs, simclr=True)
+    #         outputs = outputs_aux['simclr']
+    #         score = torch.sum((outputs - c) ** 2, dim=1)
+    #         if scores_ood == None:
+    #             scores_ood = score
+    #         else:
+    #             scores_ood = torch.cat((scores_ood, score), dim=0)
+    #     print(scores_ood.size())
+    # auroc_dict=get_auroc(scores_ood.cpu(),scores_in.cpu())
+    # print(score_sum)
+    # print(auroc_dict)
 
 
 
