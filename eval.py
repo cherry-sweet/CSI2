@@ -1,20 +1,42 @@
 import logging
 import time
 
+import numpy as np
+
 import models.transform_layers as TL
 from training.contrastive_loss import get_similarity_matrix, NT_xent
 from utils.utils import AverageMeter, normalize
+import numpy as np
+import matplotlib.pyplot as plt
 
+from sklearn import datasets
+from sklearn.manifold import TSNE
 
 import numpy
 from common.eval import *
 from common.eval_setting import *
+
 import torch.optim as optim
 from evals.evals import get_auroc
 device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
 hflip = TL.HorizontalFlipLayer().to(device)
 model.eval()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+def plot_embedding(data, label, title):
+    x_min, x_max = np.min(data, 0), np.max(data, 0)
+    data = (data - x_min) / (x_max - x_min)
+
+    fig = plt.figure()
+    ax = plt.subplot(111)
+    for i in range(data.shape[0]):
+        plt.text(data[i, 0], data[i, 1], str(label[i]),
+                 color=plt.cm.Set1(label[i] / 10.),
+                 fontdict={'weight': 'bold', 'size': 9})
+    plt.xticks([])
+    plt.yticks([])
+    plt.title(title)
+    return fig
 if P.mode == 'test_acc':
     from evals import test_classifier
     with torch.no_grad():
@@ -74,6 +96,7 @@ elif P.mode in ['ood', 'ood_pre']:
     #set train
     print("开始正式训练")
     start_time = time.time()
+    tsne = TSNE(n_components=2, init='pca', random_state=0)
     model.train()
     for epoch in range(P.svdd_epochs):
 
@@ -85,25 +108,25 @@ elif P.mode in ['ood', 'ood_pre']:
         for data in train_loader:
             inputs, _ = data
             inputs = inputs.to(device)
-            # images1, images2 = hflip(inputs.repeat(2, 1, 1, 1)).chunk(2)
-            # images_pair = torch.cat([images1, images2], dim=0)
-            # images_pair = simclr_aug(images_pair)
+            images1, images2 = hflip(inputs.repeat(2, 1, 1, 1)).chunk(2)
+            images_pair = torch.cat([images1, images2], dim=0)
+            images_pair = simclr_aug(images_pair)
             # Zero the network parameter gradients
             optimizer.zero_grad()
 
             # Update network parameters via backpropagation: forward + backward + optimize
             _, outputs_aux = model(inputs,simclr=True)
-            # _, outputs_aux2 = model(images_pair, simclr=True)
+            _, outputs_aux2 = model(images_pair, simclr=True)
             outputs = outputs_aux['simclr']
             dist = torch.sum((outputs - c) ** 2, dim=1)
-            # simclr = normalize(outputs_aux2['simclr'])
-            # sim_matrix = get_similarity_matrix(simclr, multi_gpu=P.multi_gpu)
-            # loss_sim = NT_xent(sim_matrix, temperature=0.5)
+            simclr = normalize(outputs_aux2['simclr'])
+            sim_matrix = get_similarity_matrix(simclr, multi_gpu=P.multi_gpu)
+            loss_sim = NT_xent(sim_matrix, temperature=0.5)
             #更改损失函数  加上对比损失
 
             loss1 = torch.mean(dist)
 
-            loss=loss1
+            loss=loss1+0.1*loss_sim
             loss.backward()
             optimizer.step()
 
@@ -111,8 +134,8 @@ elif P.mode in ['ood', 'ood_pre']:
             n_batches += 1
 
         # log epoch statistics
-        if ((epoch==1) or (epoch==500)or(epoch==800)or(epoch==999)):
-            num=[]
+        if ((epoch==300) or (epoch==500)or(epoch==800)or(epoch==999)):
+            ls=[]
             with torch.no_grad():
                 scores_in = None
                 for data in test_loader:
@@ -126,8 +149,9 @@ elif P.mode in ['ood', 'ood_pre']:
                         scores_in = score
                     else:
                         scores_in = torch.cat((scores_in, score), dim=0)
-                    n = outputs.cpu().numpy()
-                    num.append(n)
+                    n = np.array(outputs.cpu())
+                    ls.extend(n)
+
                 scores_ood = None
                 for data in test_loader_ood:
                     inputs, _ = data
@@ -140,12 +164,20 @@ elif P.mode in ['ood', 'ood_pre']:
                         scores_ood = score
                     else:
                         scores_ood = torch.cat((scores_ood, score), dim=0)
-                    n = outputs.cpu().numpy()
-                    num.append(n)
+                    n = np.array(outputs.cpu())
+                    ls.extend(n)
                 auroc_dict = get_auroc(scores_ood.cpu(), scores_in.cpu())
                 score_sum.append(auroc_dict)
                 print(auroc_dict)
-                print(len(num))
+                #开始画图
+                lab1 = [2]*1000
+                lab2 = np.ones(9000)
+                lab = np.append(lab1, lab2)
+
+                result = tsne.fit_transform(ls)
+                print(len(result))
+                fig = plot_embedding(data=result, label=lab, title='111')
+                plt.show()
 
         epoch_train_time = time.time() - epoch_start_time
         # print(loss_epoch / n_batches)
