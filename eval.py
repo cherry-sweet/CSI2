@@ -86,22 +86,61 @@ elif P.mode in ['ood', 'ood_pre']:
     logger = logging.getLogger()
     logging.basicConfig(level=logging.INFO)
     c=init_center_c(net=model,train_loader=train_loader)
-    # Set optimizer (Adam optimizer for now)
+    # Set optimizer (Adam optimizer for now)   设施优化方式
     optimizer = optim.Adam(model.parameters(), lr=P.svdd_lr, weight_decay=P.dweight_decay,
                        amsgrad=True)
 
-    # Set learning rate scheduler
-    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=P.dlr_milestones, gamma=0.1)
+    # Set learning rate scheduler   对学习率进行调整
+    dweight_decay=[P.dweight_decay]
+    scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=dweight_decay, gamma=0.1)
     score_sum=[]
     #set train
     print("开始正式训练")
     start_time = time.time()
-    tsne = TSNE(n_components=2, init='pca', random_state=0)
+    max_score=0.
+    # tsne = TSNE(n_components=2, init='pca', random_state=0)
     model.train()
     for epoch in range(P.svdd_epochs):
 
-        scheduler.step()
+            # ls=[]
+        with torch.no_grad():
+            scores_in = None
+            for data in test_loader:
+                inputs, _ = data
+                inputs = inputs.to(device)
+                _, outputs_aux = model(inputs, simclr=True)
+                outputs = outputs_aux['simclr']
 
+                score = torch.sum((outputs - c) ** 2, dim=1)
+                if scores_in == None:
+                    scores_in = score
+                else:
+                    scores_in = torch.cat((scores_in, score), dim=0)
+                    # n = np.array(outputs.cpu())
+                    # ls.extend(n)
+
+            scores_ood = None
+            for data in test_loader_ood:
+                inputs, _ = data
+                inputs = inputs.to(device)
+                _, outputs_aux = model(inputs, simclr=True)
+                outputs = outputs_aux['simclr']
+                score = torch.sum((outputs - c) ** 2, dim=1)
+                if scores_ood == None:
+                    scores_ood = score
+                else:
+                    scores_ood = torch.cat((scores_ood, score), dim=0)
+                    # n = np.array(outputs.cpu())
+                    # ls.extend(n)
+            auroc_dict = get_auroc(scores_ood.cpu(), scores_in.cpu())
+
+            if auroc_dict>max_score:
+                max_score=auroc_dict
+                # score_sum.append(auroc_dict)
+                # print(auroc_dict)
+
+        if epoch==P.dlr_milestones:
+            logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_last_lr()[0]))
         loss_epoch = 0.0
         n_batches = 0
         epoch_start_time = time.time()
@@ -126,7 +165,8 @@ elif P.mode in ['ood', 'ood_pre']:
 
             loss1 = torch.mean(dist)
 
-            loss=loss1+0.1*loss_sim
+            loss=loss1+0.001*loss_sim
+            # loss=loss1
             loss.backward()
             optimizer.step()
 
@@ -134,51 +174,17 @@ elif P.mode in ['ood', 'ood_pre']:
             n_batches += 1
 
         # log epoch statistics
-        if ((epoch==300) or (epoch==500)or(epoch==800)or(epoch==999)):
-            ls=[]
-            with torch.no_grad():
-                scores_in = None
-                for data in test_loader:
-                    inputs, _ = data
-                    inputs = inputs.to(device)
-                    _, outputs_aux = model(inputs, simclr=True)
-                    outputs = outputs_aux['simclr']
 
-                    score = torch.sum((outputs - c) ** 2, dim=1)
-                    if scores_in == None:
-                        scores_in = score
-                    else:
-                        scores_in = torch.cat((scores_in, score), dim=0)
-                    n = np.array(outputs.cpu())
-                    ls.extend(n)
-
-                scores_ood = None
-                for data in test_loader_ood:
-                    inputs, _ = data
-                    inputs = inputs.to(device)
-                    _, outputs_aux = model(inputs, simclr=True)
-                    outputs = outputs_aux['simclr']
-
-                    score = torch.sum((outputs - c) ** 2, dim=1)
-                    if scores_ood == None:
-                        scores_ood = score
-                    else:
-                        scores_ood = torch.cat((scores_ood, score), dim=0)
-                    n = np.array(outputs.cpu())
-                    ls.extend(n)
-                auroc_dict = get_auroc(scores_ood.cpu(), scores_in.cpu())
-                score_sum.append(auroc_dict)
-                print(auroc_dict)
                 #开始画图
-                lab1 = [2]*1000
-                lab2 = np.ones(9000)
-                lab = np.append(lab1, lab2)
-
-                result = tsne.fit_transform(ls)
-                print(len(result))
-                fig = plot_embedding(data=result, label=lab, title='111')
-                plt.show()
-
+                # lab1 = [2]*1000
+                # lab2 = np.ones(9000)
+                # lab = np.append(lab1, lab2)
+                #
+                # result = tsne.fit_transform(ls)
+                # print(len(result))
+                # fig = plot_embedding(data=result, label=lab, title='111')
+                # plt.show()
+        scheduler.step()
         epoch_train_time = time.time() - epoch_start_time
         # print(loss_epoch / n_batches)
         logger.info('  Epoch {}/{}\t Time: {:.3f}\t Loss: {:.8f}'
@@ -189,6 +195,8 @@ elif P.mode in ['ood', 'ood_pre']:
 
     logger.info('Finished training.')
     print("可以进行到这")
+    # print(score_sum)
+    print(max_score)
 
 
     # with torch.no_grad():
