@@ -5,6 +5,7 @@ import torch
 from torch.utils.data.dataset import Subset
 from torchvision import datasets, transforms
 
+import torchvision.utils as utils
 from utils.utils import set_random_seed
 
 DATA_PATH = '~/data/'
@@ -138,6 +139,12 @@ def get_dataset(P, dataset, test_only=False, image_size=None, download=False, ev
         n_classes = 10
         train_set = datasets.CIFAR10(DATA_PATH, train=True, download=download, transform=train_transform)
         test_set = datasets.CIFAR10(DATA_PATH, train=False, download=download, transform=test_transform)
+    elif dataset =='mnist':
+        image_size = (28, 28, 3)
+        n_classes = 10
+        train_set = datasets.MNIST(DATA_PATH, train=True, download=True, transform=train_transform)
+        test_set = datasets.MNIST(DATA_PATH, train=False, download=True, transform=test_transform)
+
 
     elif dataset == 'cifar100':
         image_size = (32, 32, 3)
@@ -235,7 +242,7 @@ def get_dataset(P, dataset, test_only=False, image_size=None, download=False, ev
 
 
 def get_superclass_list(dataset):
-    if dataset == 'cifar10':
+    if dataset == 'cifar10' or dataset == 'mnist':
         return CIFAR10_SUPERCLASS
     elif dataset == 'cifar100':
         return CIFAR100_SUPERCLASS

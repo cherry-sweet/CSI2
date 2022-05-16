@@ -22,6 +22,18 @@ device = torch.device(f"cuda" if torch.cuda.is_available() else "cpu")
 hflip = TL.HorizontalFlipLayer().to(device)
 model.eval()
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+#设置日志文件
+
+logger = logging.getLogger(__name__)
+logger.setLevel(level = logging.INFO)
+handler = logging.FileHandler("log.txt")
+handler.setLevel(logging.INFO)
+console = logging.StreamHandler()
+console.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.addHandler(console)
+logger.info('正类为%s' % P.one_class_idx)
+
 
 def plot_embedding(data, label, title):
     x_min, x_max = np.min(data, 0), np.max(data, 0)
@@ -78,14 +90,15 @@ elif P.mode in ['ood', 'ood_pre']:
         if P.print_score:
             print(message)
         bests.append(best_auroc)
+    # logger.info('CSI的精度%s' % P.one_class_idx)
 
     bests = map('{:.4f}'.format, bests)
     print('\t'.join(bests))
     print("我可以我能行")
     #计算圆心：
-    logger = logging.getLogger()
-    logging.basicConfig(level=logging.INFO)
-    c=init_center_c(net=model,train_loader=train_loader)
+    # logger = logging.getLogger()
+    # logging.basicConfig(level=logging.INFO)
+    c=init_center_c(net=model,train_loader=train_loader,dataset=P.dataset)
     # Set optimizer (Adam optimizer for now)   设施优化方式
     optimizer = optim.Adam(model.parameters(), lr=P.svdd_lr, weight_decay=P.dweight_decay,
                        amsgrad=True)
@@ -108,6 +121,9 @@ elif P.mode in ['ood', 'ood_pre']:
             for data in test_loader:
                 inputs, _ = data
                 inputs = inputs.to(device)
+                if P.dataset =='mnist':
+                    inputs = torch.cat((inputs, inputs, inputs), 2)
+                    inputs = inputs.reshape(inputs.shape[0], 3, 28, 28)
                 _, outputs_aux = model(inputs, simclr=True)
                 outputs = outputs_aux['simclr']
 
@@ -123,6 +139,9 @@ elif P.mode in ['ood', 'ood_pre']:
             for data in test_loader_ood:
                 inputs, _ = data
                 inputs = inputs.to(device)
+                if P.dataset == 'mnist':
+                    inputs = torch.cat((inputs, inputs, inputs), 2)
+                    inputs = inputs.reshape(inputs.shape[0], 3, 28, 28)
                 _, outputs_aux = model(inputs, simclr=True)
                 outputs = outputs_aux['simclr']
                 score = torch.sum((outputs - c) ** 2, dim=1)
@@ -138,6 +157,8 @@ elif P.mode in ['ood', 'ood_pre']:
                 max_score=auroc_dict
                 # score_sum.append(auroc_dict)
                 # print(auroc_dict)
+        if epoch%1==0:
+            logger.info(max_score)
 
         if epoch==P.dlr_milestones:
             logger.info('  LR scheduler: new learning rate is %g' % float(scheduler.get_last_lr()[0]))
@@ -145,27 +166,39 @@ elif P.mode in ['ood', 'ood_pre']:
         n_batches = 0
         epoch_start_time = time.time()
         for data in train_loader:
-            inputs, _ = data
+            inputs, _= data
             inputs = inputs.to(device)
+            if P.dataset == 'mnist':
+                inputs = torch.cat((inputs, inputs, inputs), 2)
+                inputs= inputs.reshape(inputs.shape[0], 3, 28, 28)
+            # labels=labels.to(device)
+
             images1, images2 = hflip(inputs.repeat(2, 1, 1, 1)).chunk(2)
+            #加上旋转预测   可能会有内存爆的问题，用128/4=32
+            # images1 = torch.cat([P.shift_trans(images1, k) for k in range(P.K_shift)])
+            # images2 = torch.cat([P.shift_trans(images2, k) for k in range(P.K_shift)])
+            # shift_labels = torch.cat([torch.ones_like(labels) * k for k in range(P.K_shift)], 0)  # B -> 4B
+            # shift_labels = shift_labels.repeat(2)
+
             images_pair = torch.cat([images1, images2], dim=0)
             images_pair = simclr_aug(images_pair)
             # Zero the network parameter gradients
             optimizer.zero_grad()
 
             # Update network parameters via backpropagation: forward + backward + optimize
-            _, outputs_aux = model(inputs,simclr=True)
-            _, outputs_aux2 = model(images_pair, simclr=True)
+            _, outputs_aux = model(inputs,simclr=True,shift=True)
+            _, outputs_aux2 = model(images_pair, simclr=True,shift=True)
             outputs = outputs_aux['simclr']
             dist = torch.sum((outputs - c) ** 2, dim=1)
             simclr = normalize(outputs_aux2['simclr'])
+            # loss_shift = criterion(outputs_aux2['shift'], shift_labels)
             sim_matrix = get_similarity_matrix(simclr, multi_gpu=P.multi_gpu)
             loss_sim = NT_xent(sim_matrix, temperature=0.5)
             #更改损失函数  加上对比损失
 
             loss1 = torch.mean(dist)
-
-            loss=loss1+0.001*loss_sim
+            loss = loss1 + 0.1 * loss_sim
+            # loss=loss1+0.1*loss_sim+0.1*loss_shift
             # loss=loss1
             loss.backward()
             optimizer.step()
@@ -194,9 +227,9 @@ elif P.mode in ['ood', 'ood_pre']:
     logger.info('Training time: %.3f' % train_time)
 
     logger.info('Finished training.')
-    print("可以进行到这")
+    logger.info("可以进行到这")
     # print(score_sum)
-    print(max_score)
+    logger.info(max_score)
 
 
     # with torch.no_grad():

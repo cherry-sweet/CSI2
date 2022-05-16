@@ -1,5 +1,6 @@
 import time
 
+import numpy as np
 import torch.optim
 
 import models.transform_layers as TL
@@ -39,13 +40,30 @@ def train(P, epoch, model, criterion, optimizer, scheduler, loader, logger=None,
         check = time.time()
 
         ### SimCLR loss ###
-        if P.dataset != 'imagenet':
-            batch_size = images.size(0)
+        if P.dataset == 'mnist':
+            batch_size = images.size(0)  # 32
+            #image=tensor(32,1,28,28)
+            # torch.set_printoptions(profile="full")
+            # np.set_printoptions(threshold=np.inf)
             images = images.to(device)
+            images = torch.cat((images, images, images), 2)
+            images = images.reshape(batch_size, 3, 28, 28)
+            # print(images)
+            # x = torch.tensor([[[[1, 2], [3, 4]]]])
+            # x = torch.cat((x, x, x), 2)
+            # x = x.reshape(1, 3, 2, 2)
+            # image(32,3,32,32)
+            images1, images2 = hflip(images.repeat(2, 1, 1, 1)).chunk(2)
+        elif P.dataset != 'imagenet':
+            batch_size = images.size(0)  #32
+            images = images.to(device)
+            #image(32,3,32,32)
             images1, images2 = hflip(images.repeat(2, 1, 1, 1)).chunk(2)  # hflip
         else:
             batch_size = images[0].size(0)
             images1, images2 = images[0].to(device), images[1].to(device)
+
+
         labels = labels.to(device)
 
         images1 = torch.cat([P.shift_trans(images1, k) for k in range(P.K_shift)])

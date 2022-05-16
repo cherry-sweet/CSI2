@@ -189,6 +189,9 @@ def _get_features(P, model, loader, interp=False, imagenet=False, simclr_aug=Non
                 x_t = torch.cat([P.shift_trans(hflip(x), k) for k in range(P.K_shift)])
             else:
                 x_t = x # No shifting: SimCLR
+            if P.dataset == 'mnist':
+                x_t = torch.cat((x_t, x_t, x_t), 2)
+                x_t = x_t.reshape(x_t.shape[0], 3, 28, 28)
             x_t = simclr_aug(x_t)
 
             # compute augmented features

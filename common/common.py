@@ -7,7 +7,7 @@ def parse_args(default=False):
     parser = ArgumentParser(description='Pytorch implementation of CSI')
 
     parser.add_argument('--dataset', help='Dataset',
-                        choices=['cifar10', 'cifar100', 'imagenet'], type=str)
+                        choices=['cifar10', 'cifar100', 'imagenet','mnist'], type=str)
     parser.add_argument('--one_class_idx', help='None: multi-class, Not None: one-class',
                         default=None, type=int)
     parser.add_argument('--model', help='Model',
@@ -88,9 +88,9 @@ def parse_args(default=False):
     parser.add_argument('--dweight_decay', help='Initial learning rate',
                         default=1e-6, type=float)
     parser.add_argument('--dlr_milestones', help='Initial learning rate',
-                        type=int, default=[50])
+                        type=int, default=[250])
     parser.add_argument('--svdd_epochs', help='Epochs',
-                        default=100, type=int)
+                        default=250, type=int)
 
     if default:
         return parser.parse_args('')  # empty string

@@ -17,14 +17,14 @@ class BaseModel(nn.Module, metaclass=ABCMeta):
     @abstractmethod
     def penultimate(self, inputs, all_features=False):
         pass
-
+    #网络的前向传播过程
     def forward(self, inputs, penultimate=False, simclr=False, shift=False, joint=False):
         _aux = {}
         _return_aux = False
 
-        features = self.penultimate(inputs)
+        features = self.penultimate(inputs)   #512d
 
-        output = self.linear(features)
+        output = self.linear(features)  #进行一个线性映射
 
         if penultimate:
             _return_aux = True
